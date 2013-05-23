@@ -25,8 +25,10 @@ int main(void)
 	CTimer2 rtc();
 	Uart0 serial0(115200);
 	Uart1 serial1(115200);
-	Can0 can0(CAN_BAUDRATE_200K);
-	can0.Baudrate(CAN_BAUDRATE_200K);
+	CAN can0(CAN_BAUDRATE_250K);
+	can0.SetupMOb(15,RX_DATA,0x0000000F,0x000000F0);
+	can0.SetupMOb(13,TX_DATA,0x0000000F,0x000000F0);
+	//can.HwSetup(6);
 
 	sei();
 
@@ -35,7 +37,7 @@ int main(void)
 	while(1){
 
 		counter++;
-		serial0.write('0x71');
+		serial0.write('51');
 		serial1.write(5);
 		serial0.write(counter);
 		serial1.write(counter);
