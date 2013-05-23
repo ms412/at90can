@@ -90,6 +90,7 @@ public:
 private:
 	bool set_canspeed(uint8_t canspeed);
 	bool get_MOb(uint8_t mob);
+	uint8_t MOb_Signal_Act(void);
 
 };
 

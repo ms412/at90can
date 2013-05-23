@@ -4,6 +4,8 @@
  *      Author: Daniel
  */
 
+#include <avr/io.h>
+#include <avr/interrupt.h>
 #include "can_drv.hpp"
 
 CAN::CAN(uint8_t canspeed){
@@ -337,3 +339,28 @@ bool CAN::set_canspeed(uint8_t canspeed)
 	#endif
 }
 
+
+ISR (CANIT_vect)
+{
+	cli();
+	uint8_t temp_canpage;
+	uint8_t mob;
+
+	//save current canpage setting
+	temp_canpage = CANPAGE;
+
+	//get first MOb with interrupt
+	mob = (CANHPMOB >> 4);
+	//select Canpage with interrupt
+	SET_CANPAGE(mob);
+
+	//if Rx interrupt is present
+	if ((CANSTMOB & (1<<RXOK)) != false){
+		//IRQ_Service_Rx(mob);
+	}else if ((CANSTMOB & (1<<TXOK)) != false){  //TX interrupt
+		//IRQ_Service_Tx(mob);
+	}else{			//error interrupt
+		//IRQ_Service_Err(mob;)
+	}
+	sei();
+}
