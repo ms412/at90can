@@ -6,16 +6,31 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include "../utils/fifo.hpp"
 #include "can_drv.hpp"
+
+static CBuffer<struct MOb_struct,5> TxBuffer;
+static CBuffer<struct MOb_struct,5> RxBuffer;
+
+CAN t_CAN(CAN_BAUDRATE_125K);
 
 CAN::CAN(uint8_t canspeed){
 
 	uint8_t mob;
 
+	CAN::Set_irq_state(false);
+
+	CAN_RESET;
+
+	//disable all CAN Interrupts
+	CANIE1 = 0;
+	CANIE2 = 0;
+
 	//initial all mob objects
 	for (mob = 0; mob < MAX_MOB; mob++)
 	{
-		CANPAGE  = (mob << 4);
+		SET_CANPAGE(mob);
+		//CANPAGE  = (mob << 4);
 		CANSTMOB = 0;
 		CANCDMOB = 0;
 	}
@@ -23,11 +38,14 @@ CAN::CAN(uint8_t canspeed){
 	// Set CAN interface speed
 	if(set_canspeed(canspeed) == false)
 
-	//Enable global CAN interrupt
-	CAN_IRQ_ENABLE;
+	CANGIT = 0;
+
 	//Enable Rx/Tx CAN interrupt
 	CAN_RX_IRQ_ENABLE;
 	CAN_TX_IRQ_ENABLE;
+
+	//Enable global CAN interrupt
+	CAN_IRQ_ENABLE;
 
 	// Enable CAN subsystem
 	CAN_ENABLE;
@@ -93,6 +111,71 @@ bool CAN::get_MOb(uint8_t mob)
 	CANPAGE = (mob << 4);
 
 	return true;
+}
+
+bool CAN::put(struct MOb_struct *MOb)
+{
+	//PORTD ^= (1<<PD7);
+	// if MOb is free
+	//if buffer is empty, no Tx interrupt will occur
+	if (Get_irq_state()){
+		//PORTD ^= (1<<PD4);
+		if (TxBuffer.isFull()){
+			//PORTD ^= (1<<PD4);
+			return false;
+		}
+		//MOb is in Buffer
+		cli();
+		RxBuffer.Put(*MOb);
+		sei();
+		return true;
+	}
+	Set_irq_state(true);
+	PORTD ^= (1<<PD5);
+	CAN::write(MOb);
+
+	return true;
+}
+
+bool CAN::write(struct MOb_struct *MOb)
+{
+	uint8_t temp_canpage;
+	//uint8_t i;
+	//PORTD ^= (1<<PD7);
+
+	temp_canpage = CANPAGE;
+	SET_CANPAGE(MOb->number);
+
+	CANSTMOB = 0x00;
+	//CANCDMOB = 0x00;
+	CANCDMOB |= (1<<IDE);
+
+	SET_EXTENDED_ID(MOb->id);
+
+	CANCDMOB |= MOb->length;
+
+	for (uint8_t i=0; i < MOb->length; i++){
+		CANMSG = MOb->data[i];
+	}
+
+	MOb_ENABLE_TX
+
+	CANPAGE = temp_canpage;
+
+	sei();
+	return true;
+}
+bool CAN::status_MOb(uint8_t mob)
+{
+	//select MOb page
+	SET_CANPAGE(mob);
+
+	//check if MOb is in use
+	if ((CANCDMOB & ((1<<CONMOB1)|(1<<CONMOB0)))==0){
+		return true;
+	}
+
+	return false;
 }
 
 bool CAN::set_canspeed(uint8_t canspeed)
@@ -337,30 +420,54 @@ bool CAN::set_canspeed(uint8_t canspeed)
 		#warning F_CPU has no correct frequency for canspeed settings
 		return false;
 	#endif
+
 }
 
 
-ISR (CANIT_vect)
+
+void CANIT_vect()
 {
-	cli();
+	//cli();
 	uint8_t temp_canpage;
 	uint8_t mob;
 
-	//save current canpage setting
-	temp_canpage = CANPAGE;
 
-	//get first MOb with interrupt
-	mob = (CANHPMOB >> 4);
-	//select Canpage with interrupt
-	SET_CANPAGE(mob);
 
-	//if Rx interrupt is present
-	if ((CANSTMOB & (1<<RXOK)) != false){
-		//IRQ_Service_Rx(mob);
-	}else if ((CANSTMOB & (1<<TXOK)) != false){  //TX interrupt
-		//IRQ_Service_Tx(mob);
-	}else{			//error interrupt
+	if ((CANHPMOB & 0xf0) != 0xf0){
+
+
+			//save current canpage setting
+			temp_canpage = CANPAGE;
+
+			//get first MOb with interrupt
+			mob = (CANHPMOB >> 4);
+			//select Canpage with interrupt
+			SET_CANPAGE(mob);
+
+			//if Rx interrupt is present
+			if (CANSTMOB & (1<<RXOK)){
+				//PORTD ^= (1<<PD7);
+				//IRQ_Service_Rx(mob);
+			}else if (CANSTMOB & (1<<TXOK)){  //TX interrupt
+				CANSTMOB &= 0;
+				CANCDMOB = 0;
+				//IRQ_Service_Tx(mob);
+				PORTD ^= (1<<PD7);
+				t_CAN.Set_irq_state(true);
+				struct MOb_struct MOb;
+				if (!TxBuffer.isEmpty()){
+					PORTD ^= (1<<PD4);
+					TxBuffer.Get(MOb);
+					t_CAN.write(&MOb);
+				}else{
+					t_CAN.Set_irq_state(false);
+				}
+		MOB_IRQ_DISABLE(mob);
+			}
+	//}else{			//error interrupt
 		//IRQ_Service_Err(mob;)
-	}
-	sei();
+	}else{
+		CANGIT |=0;
+		}
+	CANPAGE = temp_canpage;
 }

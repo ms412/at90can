@@ -65,10 +65,19 @@
 		CANIDM4 = (1<<IDEMSK);}
 
 //SET MOb to Enable TX/RX,Disable
-#define MOb_DISABLE        { CANCDMOB &= (~(1<<CONMOB1));CANCDMOB &= (~(1<<CONMOB0));}
-#define MOb_ENABLE_TX      { CANCDMOB &= (~(1<<CONMOB1));CANCDMOB |= (1<<CONMOB0);}
-#define MOb_ENABLE_RX      { CANCDMOB |= (1<<CONMOB1);CANCDMOB &= (~(1<<CONMOB0));}
+#define CONMOB_MSK 		((1<<CONMOB1)|(1<<CONMOB0))
+#define MOb_Tx_ENA 1
+#define MOb_Rx_ENA 2
 
+#define MOb_DISABLE 	{CANCDMOB &= (~CONMOB_MSK);}
+#define MOb_ENABLE_TX	{MOb_DISABLE; CANCDMOB |= (MOb_Tx_ENA << CONMOB0);}
+#define MOb_ENABLE_RX	{MOb_DISABLE; CANCDMOB |= (MOb_Rx_ENA << CONMOB0);}
+
+//#define MOb_DISABLE        { CANCDMOB &= (~(1<<CONMOB1));CANCDMOB &= (~(1<<CONMOB0));}
+//#define MOb_ENABLE_TX      { CANCDMOB &= (~(1<<CONMOB1));CANCDMOB |= (1<<CONMOB0);}
+//#define MOb_ENABLE_RX      { CANCDMOB |= (1<<CONMOB1);CANCDMOB &= (~(1<<CONMOB0));}
+
+#define MOb_TX_IRQ		{CANSTMOB |= (1<<TXOK);}
 
 #define MAX_MOB 15
   // canspeed
@@ -78,19 +87,44 @@
   enum {DISABLED, TX_DATA, RX_DATA, TX_REMOTE, AUTO_REPLY};
 
 
+  struct MOb_struct{
+  	uint32_t id;
+  	uint8_t number;
+  	uint8_t length;
+  	uint8_t data[8];
+  };
 
+  extern "C" void CANIT_vect(void) __attribute__ ((signal));
+
+  extern class CAN t_CAN;
 
 class CAN {
 public:
 	// constructor
 	CAN(uint8_t canspeed);
 	bool SetupMOb(uint8_t mob,  uint8_t mode, uint32_t CAN_ID_Low, uint32_t CAN_ID_High);
+	bool write(struct MOb_struct *MOb);
+	bool put(struct MOb_struct *MOb);
+
+	// Flag monitors the current Tx Progress
+
+	void Set_irq_state(bool state){irq_state = state;}
+	bool Get_irq_state(void) {return irq_state;}
 
 
 private:
+	bool status_MOb(uint8_t mob);
 	bool set_canspeed(uint8_t canspeed);
 	bool get_MOb(uint8_t mob);
 	uint8_t MOb_Signal_Act(void);
+
+	friend void CANIT_vect();
+
+	bool irq_state;
+
+
+
+
 
 };
 
